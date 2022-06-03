@@ -1,9 +1,11 @@
-"""Convert difference of images to magnitude and mask over median"""
+"""Prepare raw images for Fourier Analysis"""
 
 ###############################################################################
 from configparser import ConfigParser, ExtendedInterpolation
+import glob
 import time
 
+from astropy.io import fits as pyfits
 import numpy as np
 
 from leosAi.utils.managefiles import FileDirectory
@@ -11,51 +13,57 @@ from leosAi.utils.managefiles import FileDirectory
 start_time = time.time()
 ###############################################################################
 parser = ConfigParser(interpolation=ExtendedInterpolation())
-config_file_name = "magnitude.ini"
+config_file_name = "raw.ini"
 parser.read(f"{config_file_name}")
 # Check files and directory
 check = FileDirectory()
 # Handle configuration file
 # configuration = ConfigurationFile()
 ###############################################################################
-print("Load images", end="\n")
-images_directory = parser.get("directory", "images")
-images_file_name = parser.get("file", "images")
-images = np.load(f"{images_directory}/{images_file_name}", mmap_mode="r")
+# location of data
+data_directory = parser.get("directory", "data")
+data_type = parser.get("common", "type")
+path_to_files = glob.glob(f"{data_directory}/*/{data_type}/*.fits")
+
+print("Process NaNs and values bellow the median", end="\n")
 
 print("Convert to magnitude scale and mask median pixels", end="\n")
 
-save_data_to = parser.get("directory", "magnitudes")
+for idx, path_to_file in enumerate(path_to_files):
 
-check.check_directory(save_data_to, exit_program=True)
+    file_name = path_to_file.split("/")[-1].split(".")[0]
+    print(f"{idx:04d}: {file_name}", end="\r")
 
-for idx, image in enumerate(images):
+    with pyfits.open(path_to_file) as hdu:
 
-    print(f"Process image: {idx:03d}", end="\r")
+        # get magnitude scale to better distinguis objects
+        # image = np.log10(hdu[0].data)
+        image = hdu[0].data
 
-    image_copy = np.abs(image).copy()
+    # replace NaNs with background
+    image = np.where(~np.isfinite(image), np.nanmedian(image), image)
+    # replace negative and null counts with median
+    image = np.where(image <= 0, np.nanmedian(image), image)
+    # compute magnitude
+    image = np.log10(image)
+    # Set background to zero
+    image = np.where(image <= np.median(image), 0., image-np.median(image))
+    # Normalize image
+    image *= 1/np.max(image)
 
-    if np.median(image_copy) == 0.:
-        continue
+    save_to = path_to_file.split("/")[:-2]
+    save_to = '/'.join(save_to)
+    save_to = f"{save_to}/magnitude"
+    check.check_directory(save_to, exit_program=False)
+    np.save(f"{save_to}/{file_name}.npy", image)
 
-    image_copy = np.where(image_copy==0, np.median(image_copy), image_copy)
+    ###########################################################################
+    with open(
+        f"{save_to}/{config_file_name}",
+        "w", encoding="utf8"
+    ) as config_file:
 
-    image_copy = -2.5 * np.log10(image_copy)
-    image_copy = np.where(
-        image_copy > np.median(image_copy),
-        np.median(image_copy),
-        image_copy
-    )
-
-    np.save(f"{save_data_to}/{idx:03d}", image_copy)
-
-###############################################################################
-with open(
-    f"{save_data_to}/{config_file_name}",
-    "w", encoding="utf8"
-) as config_file:
-
-    parser.write(config_file)
+        parser.write(config_file)
 ###############################################################################
 finish_time = time.time()
-print(f"Run time: {finish_time-start_time:.2f}")
+print(f"\n Run time: {finish_time-start_time:.2f}", end="\n")
