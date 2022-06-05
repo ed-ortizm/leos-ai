@@ -13,7 +13,7 @@ from leosAi.utils.managefiles import FileDirectory
 start_time = time.time()
 ###############################################################################
 parser = ConfigParser(interpolation=ExtendedInterpolation())
-config_file_name = "raw.ini"
+config_file_name = "magnitude.ini"
 parser.read(f"{config_file_name}")
 # Check files and directory
 check = FileDirectory()
@@ -36,8 +36,6 @@ for idx, path_to_file in enumerate(path_to_files):
 
     with pyfits.open(path_to_file) as hdu:
 
-        # get magnitude scale to better distinguis objects
-        # image = np.log10(hdu[0].data)
         image = hdu[0].data
 
     # replace NaNs with background
@@ -45,7 +43,7 @@ for idx, path_to_file in enumerate(path_to_files):
     # replace negative and null counts with median
     image = np.where(image <= 0, np.nanmedian(image), image)
     # compute magnitude
-    image = np.log10(image)
+    image = np.log10(image, dtype=np.float32)
     # Set background to zero
     image = np.where(image <= np.median(image), 0., image-np.median(image))
     # Normalize image
