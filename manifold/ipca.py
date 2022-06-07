@@ -52,7 +52,7 @@ n_components = parser.getint("pca", "components")
 assert n_components <= batch_size
 transformer = IncrementalPCA(n_components = n_components)
 
-save_to = f"{data_directory}/gauss_rp"
+save_to = f"{data_directory}/ipca"
 check.check_directory(save_to, exit_program=False)
 
 for batch in range(number_of_batches):
